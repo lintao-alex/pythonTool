@@ -6,13 +6,11 @@ import utils
 import ByteArray
 import errorChecker
 import struct
+import reutils
 
 
 class ParseXls(object):
     __write_tool = ByteArray.ByteArray()
-    __array_re = re.compile(r'(.+)\[]$')
-    __define_re = re.compile(r'(\w+)\$([\w~;]+)\[]')
-    __error_info = errorChecker.ErrorInfo()
 
     # methods tobe override
     def _get_game_class_templet_str(self):
@@ -21,37 +19,71 @@ class ParseXls(object):
     def _get_define_class_templet_str(self):
         pass
 
+    def _get_class_collection_templet_str(self):
+        pass
+
     def _get_file_extension_name(self):
         pass
 
     def _get_line_note_mark(self):
         pass
 
-    def _init_type_map(self, mapobj):
+    def _init_type_map(self, map_obj):
         pass
 
-    def _init_type_fuc_map(self, mapobj):
+    def _init_type_fuc_map(self, map_obj):
         pass
 
-    def __init__(self, xls_full_path, code_dest_path, cfg_dest_path):
-        # 只做必要数据初始化与错误检查
-        # data type in different langue
+    def __init__(self):
+        # tools
+        self.__total_class_list = []  # 记录解析出了哪些类
+        self.__array_re = re.compile(r'(.+)\[]$')
+        self.__define_re = re.compile(r'(\w+)\$([\w~;]+)\[]')
+        self.__error_info = errorChecker.ErrorInfo()
+        self.__game_class_property_declare_list_re = re.compile(
+            Mark.MARK_PROPERTY_DECLARE_LIST +
+            r'(\s*)(.*)\s*' +
+            Mark.MARK_VECTOR_DECLARE_MODE +
+            r'(.*)')
+        multiple_line = r'\s*' + Mark.MARK_MULTIPLE_LINE_FORMAT_BEGIN + \
+            r'([\s\S]*)' + Mark.MARK_MULTIPLE_LINE_FORMAT_END
+        self.__game_class_parse_sentence_re = re.compile(
+            Mark.MARK_PARSE_SENTENCE_LIST +
+            r'(\s*)(.*)' + multiple_line + multiple_line + multiple_line)
+
+        # data type in different language
         self.__type_map = {}
         self._init_type_map(self.__type_map)
-        # data parse function in different langue
+        # data parse function in different language
         self.__type_fuc_map = {}
         self._init_type_fuc_map(self.__type_fuc_map)
 
+        self.__xls_full_path_name = ''
+        self.__xls_file_name = ''
+        self.__code_dest_path = ''
+        self.__cfg_dest_path = ''
+        self.__out_class_name = ''
+
+        self.__type_list = []  # 可能是ClassInfo或ArrayInfo
+        self.__proxy_define_list = []  # 筛选出的ClassInf子集
+        self.__property_list = []  # 字段名
+        self.__desc_list = []
+        self.__values_list = []  # 注意这是二维数组
+        self.__org_column_index_list = []  # 为数据错误精确定位
+
+    def reset(self, xls_full_path, code_dest_path, cfg_dest_path):
+        # 只做必要数据初始化与错误检查
         self.__xls_full_path_name = xls_full_path
         self.__xls_file_name = os.path.basename(xls_full_path)
         self.__code_dest_path = code_dest_path
         self.__cfg_dest_path = cfg_dest_path
 
-        self.__type_list = []  # 可能是ClassInfo或ArrayInfo
-        self.__property_list = []  # 字段名
-        self.__desc_list = []
-        self.__values_list = []  # 注意这是二维数组
-        self.__org_column_index_list = []  # 为数据错误精确定位
+        self.__type_list.clear()
+        self.__proxy_define_list.clear()
+        self.__property_list.clear()
+        self.__desc_list.clear()
+        self.__values_list.clear()
+        self.__org_column_index_list.clear()
 
         work_book = xlrd.open_workbook(self.__xls_full_path_name)
         work_sheet = work_book.sheet_by_index(0)
@@ -113,6 +145,7 @@ class ParseXls(object):
                                 utils.beautify_formation(cl_t_p[1]))
                         self.__append_export(
                             def_cl, utils.beautify_formation(property_name), desc_str, value_cols)
+                        self.__proxy_define_list.append(def_cl)
                     else:
                         array_match = self.__array_re.match(type_name)
                         if array_match is not None:
@@ -141,42 +174,43 @@ class ParseXls(object):
         self.__org_column_index_list.append(self.__error_info.column_index)
 
     def __replace_game_class_property(self, matched):
-        result = ''
         split_str = matched.group(1)
-        declear_str = matched.group(2)
+        declare_str = matched.group(2)
         list_mode_str = matched.group(3)
+        content_list = []
         for index, type_obj in enumerate(self.__type_list):
             if isinstance(type_obj, ClassInfo):
                 out_type = list_mode_str.replace(
-                    Mark.MARK_PROPERTY_NAME, type_obj.name)
+                    Mark.MARK_PROPERTY_TYPE, type_obj.name)
             elif isinstance(type_obj, ArrayInfo):
                 out_type = list_mode_str
                 if type_obj.dimension == 2:
                     out_type = out_type.replace(
-                        Mark.MARK_PROPERTY_NAME, list_mode_str)
+                        Mark.MARK_PROPERTY_TYPE, list_mode_str)
                 out_type = out_type.replace(
-                    Mark.MARK_PROPERTY_NAME, self.__type_map[type_obj.type_name])
+                    Mark.MARK_PROPERTY_TYPE, self.__type_map[type_obj.type_name])
             else:
                 out_type = self.__type_map[type_obj]
-            one_property = declear_str.replace(
+            one_property = declare_str.replace(
                 Mark.MARK_PROPERTY_NAME,
                 self.__property_list[index])
             one_property = one_property.replace(
                 Mark.MARK_PROPERTY_TYPE, out_type)
-            result += split_str + self._get_line_note_mark() + \
-                self.__desc_list[index].replace('\n', '')
-            result += split_str + one_property
-        return result
+            content_list.append(
+                self._get_line_note_mark() +
+                self.__desc_list[index].replace(
+                    '\n',
+                    ''))
+            content_list.append(one_property)
+        return split_str.join(content_list)
 
     def __replace_game_class_sentence(self, matched):
-        result = ''
         split_str1 = matched.group(1)
-        temp_list_var = matched.group(2)
-        single_property_str = matched.group(3)
-        define_property_str = matched.group(4)
-        arry_property_str = matched.group(5)
-        arry2_property_str = matched.group(6)
-        # need_temp_list_var = False
+        single_property_str = matched.group(2)
+        define_property_str = matched.group(3)
+        array_property_str = matched.group(4)
+        array2_property_str = matched.group(5)
+        content_list = []
         for index, type_obj in enumerate(self.__type_list):
             prop_str = self.__property_list[index]
             if isinstance(type_obj, ClassInfo):
@@ -188,9 +222,9 @@ class ParseXls(object):
                 if isinstance(type_obj, ArrayInfo):
                     base_type = type_obj.type_name
                     if type_obj.dimension == 2:
-                        one_property = arry2_property_str
+                        one_property = array2_property_str
                     else:
-                        one_property = arry_property_str
+                        one_property = array_property_str
                 else:
                     base_type = type_obj
                     one_property = single_property_str
@@ -198,110 +232,76 @@ class ParseXls(object):
                     Mark.MARK_PROPERTY_NAME, prop_str)
                 one_property = one_property.replace(
                     Mark.MARK_PARSE_FUNCTION_NAME, self.__type_fuc_map[base_type])
-            result += split_str1 + one_property
-        # if need_temp_list_var:
-        #     result = split_str1 + temp_list_var + split_str1 + result
-        return result
+            content_list.append(one_property)
+        return split_str1.join(content_list)
 
-    # game data struct
-    def extract_game_struct(self):
+    # game data class
+    def extract_game_class(self):
         content_str = self._get_game_class_templet_str()
+        content_str = content_str.replace(
+            Mark.MARK_SOURCE_TABLE,
+            self.__xls_file_name)  # 注明数据来源
         content_str = content_str.replace(Mark.MARK_PACKAGE, Mark.PATH_PACKAGE)
+        content_str = reutils.es_import_declare_list.sub(
+            reutils.def_one_mark_list(
+                Mark.MARK_CLASS_NAME,
+                self.__proxy_define_list,
+                'name'),
+            content_str)
         content_str = content_str.replace(
             Mark.MARK_PACKAGE_DEFINE,
-            Mark.PATH_PACKAGE_DEFINE)
+            Mark.PATH_PACKAGE_DEFINE)  # 替换import时会引入新的MARK_PACKAGE_DEFINE,所以在其后再作替换
         content_str = content_str.replace(
             Mark.MARK_CLASS_NAME, self.__out_class_name)
-        content_str = re.sub(  # 字段申明
-            r'(\s*)' +
-            Mark.MARK_PROPERTY_DECLARE_LIST +
-            r'(.*)' +
-            r'\s*' +
-            Mark.MARK_VECTOR_DECLARE_MODE +
-            r'(.*)',
-            self.__replace_game_class_property,
-            content_str)
-        content_str = re.sub(  # 赋值
-            r'(\s*)' +
-            Mark.MARK_TEMP_LIST_VAR +
-            r'(.*)' +
-            r'\s*' +
-            Mark.MARK_PARSE_SENTENCE_LIST +
-            r'(.*)' +
-            r'\s*' +
-            Mark.MARK_MULTIPLE_LINE_FORMAT_BEGIN +
-            r'([\S\s]*?)' +
-            Mark.MARK_MULTIPLE_LINE_FORMAT_END +
-            r'\s*' +
-            Mark.MARK_MULTIPLE_LINE_FORMAT_BEGIN +
-            r'([\S\s]*?)' +
-            Mark.MARK_MULTIPLE_LINE_FORMAT_END +
-            r'\s*' +
-            Mark.MARK_MULTIPLE_LINE_FORMAT_BEGIN +
-            r'([\S\s]*?)' +
-            Mark.MARK_MULTIPLE_LINE_FORMAT_END,
-            self.__replace_game_class_sentence,
-            content_str)
-        content_str = content_str.replace(  # 注明数据来源
-            Mark.MARK_SOURCE_TABLE, self.__xls_file_name)
+        content_str = self.__game_class_property_declare_list_re.sub(
+            self.__replace_game_class_property, content_str)  # 字段申明
+        content_str = self.__game_class_parse_sentence_re.sub(
+            self.__replace_game_class_sentence, content_str)  # 赋值
+
         class_file_path_name = os.path.join(
             self.__code_dest_path,
             self.__out_class_name) + "." + self._get_file_extension_name()
-
+        self.__total_class_list.append(self.__out_class_name)
         with open(class_file_path_name, 'w', -1, 'utf8') as class_file:
             class_file.write(content_str)
         print('write file to: ' + class_file_path_name)
 
-    # the inner struct defined by sponsor
-    def extract_class_info(self, child_dir):
-        def replace_sentence(matched):
-            result = ''
-            for var_index, type_str in enumerate(type_obj.type_list):
-                var_str = matched.group(2).replace(
+    # the inner class defined by sponsor
+    def extract_define_class(self):
+        for define_class in self.__proxy_define_list:
+            content_str = self._get_define_class_templet_str()
+            content_str = content_str.replace(
+                Mark.MARK_CLASS_NAME, define_class.name)
+            content_str = content_str.replace(
+                Mark.MARK_PACKAGE, Mark.PATH_PACKAGE)
+            content_str = content_str.replace(
+                Mark.MARK_PACKAGE_DEFINE, Mark.PATH_PACKAGE_DEFINE)
+            content_str = reutils.property_declare_list.sub(
+                reutils.def_two_mark_list(
                     Mark.MARK_PROPERTY_NAME,
-                    type_obj.property_list[var_index])
-                var_str = var_str.replace(
-                    Mark.MARK_PARSE_FUNCTION_NAME, self.__type_fuc_map[type_str])
-                result += matched.group(1) + var_str
-            return result
-
-        def replace_property(matched):
-            result = ''
-            for var_index, type_str in enumerate(type_obj.type_list):
-                var_str = matched.group(2).replace(
+                    define_class.property_list,
+                    Mark.MARK_PROPERTY_TYPE,
+                    define_class.type_list,
+                    None,
+                    self.__type_map),
+                content_str)
+            content_str = reutils.parse_sentence_list.sub(
+                reutils.def_two_mark_list(
                     Mark.MARK_PROPERTY_NAME,
-                    type_obj.property_list[var_index])
-                var_str = var_str.replace(
-                    Mark.MARK_PROPERTY_TYPE, self.__type_map[type_str])
-                result += matched.group(1) + var_str
-            return result
+                    define_class.property_list,
+                    Mark.MARK_PARSE_FUNCTION_NAME,
+                    define_class.type_list,
+                    None,
+                    self.__type_fuc_map),
+                content_str)
 
-        for type_obj in self.__type_list:
-            if isinstance(type_obj, ClassInfo):
-                content_str = self._get_define_class_templet_str()
-                content_str = content_str.replace(
-                    Mark.MARK_CLASS_NAME, type_obj.name)
-                content_str = content_str.replace(
-                    Mark.MARK_PACKAGE, Mark.PATH_PACKAGE)
-                content_str = content_str.replace(
-                    Mark.MARK_PACKAGE_DEFINE, Mark.PATH_PACKAGE_DEFINE)
-                content_str = re.sub(
-                    r'(\s*)' + Mark.MARK_PROPERTY_DECLARE_LIST + r'(.+)',
-                    replace_property,
-                    content_str)
-                content_str = re.sub(
-                    r'(\s*)' + Mark.MARK_PARSE_SENTENCE_LIST + r'(.+)',
-                    replace_sentence,
-                    content_str)
-
-                class_file_name = os.path.join(
-                    self.__code_dest_path,
-                    child_dir,
-                    type_obj.name) + '.' + self._get_file_extension_name()
-
-                with open(class_file_name, 'w', -1, 'utf8') as fp:
-                    fp.write(content_str)
-                print('write file to: ' + class_file_name)
+            class_file_name = os.path.join(
+                self.__code_dest_path,
+                Mark.PATH_PACKAGE_DEFINE,
+                define_class.name) + '.' + self._get_file_extension_name()
+            with open(class_file_name, 'w', -1, 'utf8') as fp:
+                fp.write(content_str)
+            print('write file to: ' + class_file_name)
 
     def extract_config_file(self):
         file_path = os.path.join(
@@ -349,6 +349,39 @@ class ParseXls(object):
                                         type_obj.type_name, value1)
                         else:
                             self.write_base_type(type_obj, value)
+        print('write file to: ' + file_path)
+
+    def extract_class_collection_file(self):
+        content_str = self._get_class_collection_templet_str()
+        content_str = content_str.replace(Mark.MARK_PACKAGE, Mark.PATH_PACKAGE)
+        content_str = reutils.es_import_declare_list.sub(
+            reutils.def_one_mark_list(
+                Mark.MARK_CLASS_NAME,
+                self.__total_class_list),
+            content_str)
+        content_str = reutils.class_declare_list.sub(
+            reutils.def_one_mark_list(
+                Mark.MARK_CLASS_NAME,
+                self.__total_class_list),
+            content_str)
+        content_str = reutils.property_declare_list.sub(
+            reutils.def_one_mark_list(
+                Mark.MARK_CLASS_NAME,
+                self.__total_class_list),
+            content_str)
+        content_str = reutils.es_export_declare_list.sub(
+            reutils.def_one_mark_list(
+                Mark.MARK_PROPERTY_TYPE,
+                self.__total_class_list),
+            content_str)
+
+        class_name = 'StaticData'
+        content_str = content_str.replace(Mark.MARK_CLASS_NAME, class_name)
+        file_path = os.path.join(
+            self.__code_dest_path,
+            class_name) + '.' + self._get_file_extension_name()
+        with open(file_path, 'w', -1, 'utf-8') as file:
+            file.write(content_str)
         print('write file to: ' + file_path)
 
     @staticmethod

@@ -1,0 +1,1 @@
+python configTool\export_all.py test test\service test -s

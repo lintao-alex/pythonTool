@@ -1,1 +1,0 @@
-python configTool\export_all.py test test test

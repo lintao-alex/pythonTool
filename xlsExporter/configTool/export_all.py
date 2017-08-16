@@ -38,6 +38,13 @@ def main():
     make_sure_out_dir(code_dir, True)
     make_sure_out_dir(cfg_dir, False)
 
+    if '-s' in sys.argv:
+        import ParseTsS
+        parse_obj = ParseTsS.ParseTsS()
+    else:
+        import ParseTs
+        parse_obj = ParseTs.ParseTs()
+
     for file_name in os.listdir(xls_dir):
         # check xls file
         if file_name[0] == '~':
@@ -51,14 +58,14 @@ def main():
 
         print('start deal file: %s' % file_name)
 
-        xls_obj = ParseTs.ParseTs(
-            xls_full_path, code_dir, cfg_dir)
-        xls_obj.extract_class_info(Mark.PATH_PACKAGE_DEFINE)
-        xls_obj.extract_game_struct()
-        xls_obj.extract_config_file()
+        parse_obj.reset(xls_full_path, code_dir, cfg_dir)
+        parse_obj.extract_define_class()
+        parse_obj.extract_game_class()
+        parse_obj.extract_config_file()
+
+    parse_obj.extract_class_collection_file()
 
 
 if __name__ == '__main__':
     check_xlrd_dir()
-    import ParseTs
     main()

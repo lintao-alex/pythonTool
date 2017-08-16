@@ -4,14 +4,12 @@
 */
 
 namespace staticdata{
-    import ByteArray = egret.ByteArray;
-    
     export class Certain{
         public certainType:number;
         public certainId:number;
         public certainValue:number;
-        
-        public constructor(data:ByteArray){
+
+        public constructor(data:any){
             this.certainType = data.readInt();
             this.certainId = data.readInt();
             this.certainValue = data.readInt();
