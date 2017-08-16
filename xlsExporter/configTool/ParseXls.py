@@ -96,7 +96,7 @@ class ParseXls(object):
 
         for col_index in range(0, work_sheet.ncols):
             work_cols = work_sheet.col_values(col_index, 1, 5)
-            if int(float(work_cols[0])) == 1:
+            if ParseXls.need_care(work_cols[0]):
                 self.__error_info.column_index = col_index
                 type_name = work_cols[2]
                 self.__error_info.row_index = 3
@@ -316,10 +316,14 @@ class ParseXls(object):
                     type_obj = self.__type_list[ppt_index]
                     value = self.__values_list[ppt_index][value_index]
                     if isinstance(type_obj, ClassInfo):
+                        if isinstance(value, float):
+                            continue
                         prop_num = len(type_obj.property_list)
                         obj_arr = value.split(';')
                         self.__write_tool.write_unsigned_byte(len(obj_arr))
                         for obj_str in obj_arr:
+                            if not obj_str:
+                                continue
                             prop_values = obj_str.split('_')
                             self.__error_info.check_equal_count(
                                 len(prop_values), prop_num)
@@ -329,8 +333,8 @@ class ParseXls(object):
                                     type_obj.type_list[prop_index], prop_value)
                     else:
                         if isinstance(type_obj, ArrayInfo):
-                            if isinstance(
-                                    value, float):  # 到这一步的应该是字符串，除非策划填的是0，被xlrd读成了0.0
+                            # 到这一步的应该是字符串，除非策划填的是0，被xlrd读成了0.0
+                            if isinstance(value, float):
                                 value = '0'
                             if type_obj.dimension == 2:
                                 list1 = value.split(';')
@@ -401,6 +405,11 @@ class ParseXls(object):
         except struct.error:
             ParseXls.__error_info.alert_struct_err()
 
+    @staticmethod
+    def need_care(value):
+        if isinstance(value, float) or isinstance(value, int):
+            return value == 1
+        return False
 
 class ClassInfo:
     def __init__(self, name):
