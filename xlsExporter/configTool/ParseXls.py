@@ -1,5 +1,6 @@
 import re
 import os
+import zlib
 import xlrd
 import Mark
 import utils
@@ -10,7 +11,24 @@ import reutils
 
 
 class ParseXls(object):
-    __write_tool = ByteArray.ByteArray()
+    __total_class_list = []  # 记录解析出了哪些类
+    __config_collection_dict = {}
+    __error_info = errorChecker.ErrorInfo()
+    __array_re = re.compile(r'(.+)\[]$')
+    __define_re = re.compile(r'(\w+)\$([\w~;]+)\[]')
+    __game_class_property_declare_list_re = re.compile(
+        Mark.MARK_PROPERTY_DECLARE_LIST +
+        r'(\s*)(.*)\s*' +
+        Mark.MARK_VECTOR_DECLARE_MODE +
+        r'(.*)')
+    __multiple_line_pattern = r'\s*' + Mark.MARK_MULTIPLE_LINE_FORMAT_BEGIN + \
+        r'([\s\S]*)' + Mark.MARK_MULTIPLE_LINE_FORMAT_END
+    __game_class_parse_sentence_re = re.compile(
+        Mark.MARK_PARSE_SENTENCE_LIST +
+        r'(\s*)(.*)' +
+        __multiple_line_pattern +
+        __multiple_line_pattern +
+        __multiple_line_pattern)
 
     # methods tobe override
     def _get_game_class_templet_str(self):
@@ -35,22 +53,6 @@ class ParseXls(object):
         pass
 
     def __init__(self):
-        # tools
-        self.__total_class_list = []  # 记录解析出了哪些类
-        self.__array_re = re.compile(r'(.+)\[]$')
-        self.__define_re = re.compile(r'(\w+)\$([\w~;]+)\[]')
-        self.__error_info = errorChecker.ErrorInfo()
-        self.__game_class_property_declare_list_re = re.compile(
-            Mark.MARK_PROPERTY_DECLARE_LIST +
-            r'(\s*)(.*)\s*' +
-            Mark.MARK_VECTOR_DECLARE_MODE +
-            r'(.*)')
-        multiple_line = r'\s*' + Mark.MARK_MULTIPLE_LINE_FORMAT_BEGIN + \
-            r'([\s\S]*)' + Mark.MARK_MULTIPLE_LINE_FORMAT_END
-        self.__game_class_parse_sentence_re = re.compile(
-            Mark.MARK_PARSE_SENTENCE_LIST +
-            r'(\s*)(.*)' + multiple_line + multiple_line + multiple_line)
-
         # data type in different language
         self.__type_map = {}
         self._init_type_map(self.__type_map)
@@ -303,57 +305,75 @@ class ParseXls(object):
                 fp.write(content_str)
             print('write file to: ' + class_file_name)
 
-    def extract_config_file(self):
-        file_path = os.path.join(
-            self.__cfg_dest_path,
-            self.__out_class_name + '.dat')
-        with open(file_path, 'wb') as file:
-            self.__write_tool.update_file_obj(file)
-            for value_index, _ in enumerate(self.__values_list[0]):
-                self.__error_info.row_index = value_index + 5
-                for ppt_index, ppt_name in enumerate(self.__property_list):
-                    self.__error_info.column_index = self.__org_column_index_list[ppt_index]
-                    type_obj = self.__type_list[ppt_index]
-                    value = self.__values_list[ppt_index][value_index]
-                    if isinstance(type_obj, ClassInfo):
+    def record_config_stream(self):
+        stream_obj = ByteArray.ByteArray()
+        ParseXls.__config_collection_dict[self.__out_class_name] = stream_obj
+        stream_obj.write_utf(self.__out_class_name)
+        data_num = len(self.__values_list[0])
+        stream_obj.write_unsigned_short(data_num)
+        for value_index in range(data_num):
+            self.__error_info.row_index = value_index + 5
+            for ppt_index, ppt_name in enumerate(self.__property_list):
+                self.__error_info.column_index = self.__org_column_index_list[ppt_index]
+                type_obj = self.__type_list[ppt_index]
+                value = self.__values_list[ppt_index][value_index]
+                if isinstance(type_obj, ClassInfo):
+                    if isinstance(value, float):
+                        stream_obj.write_unsigned_byte(0)
+                        continue
+                    prop_num = len(type_obj.property_list)
+                    obj_arr = value.split(';')
+                    obj_arr = [not_empty for not_empty in obj_arr if not_empty]  # 去掉空项
+                    stream_obj.write_unsigned_byte(len(obj_arr))
+                    for obj_str in obj_arr:
+                        prop_values = obj_str.split('_')
+                        self.__error_info.check_equal_count(
+                            len(prop_values), prop_num)
+                        for prop_index, prop_value in enumerate(
+                                prop_values):
+                            self.write_base_type(
+                                type_obj.type_list[prop_index], prop_value, stream_obj)
+                else:
+                    if isinstance(type_obj, ArrayInfo):
+                        # 到这一步的应该是字符串，除非策划填的是0，被xlrd读成了0.0
                         if isinstance(value, float):
-                            continue
-                        prop_num = len(type_obj.property_list)
-                        obj_arr = value.split(';')
-                        self.__write_tool.write_unsigned_byte(len(obj_arr))
-                        for obj_str in obj_arr:
-                            if not obj_str:
-                                continue
-                            prop_values = obj_str.split('_')
-                            self.__error_info.check_equal_count(
-                                len(prop_values), prop_num)
-                            for prop_index, prop_value in enumerate(
-                                    prop_values):
+                            value = '0'
+                        if type_obj.dimension == 2:
+                            list1 = value.split(';')
+                            self.write_base_type(
+                                Mark.BYTE, len(list1), stream_obj)
+                            for value1 in list1:
+                                list2 = value1.split('_')
                                 self.write_base_type(
-                                    type_obj.type_list[prop_index], prop_value)
-                    else:
-                        if isinstance(type_obj, ArrayInfo):
-                            # 到这一步的应该是字符串，除非策划填的是0，被xlrd读成了0.0
-                            if isinstance(value, float):
-                                value = '0'
-                            if type_obj.dimension == 2:
-                                list1 = value.split(';')
-                                self.write_base_type(Mark.BYTE, len(list1))
-                                for value1 in list1:
-                                    list2 = value1.split('_')
-                                    self.write_base_type(Mark.BYTE, len(list2))
-                                    for value2 in list2:
-                                        self.write_base_type(
-                                            type_obj.type_name, value2)
-                            else:
-                                list1 = value.split('_')
-                                self.write_base_type(Mark.BYTE, len(list1))
-                                for value1 in list1:
+                                    Mark.BYTE, len(list2), stream_obj)
+                                for value2 in list2:
                                     self.write_base_type(
-                                        type_obj.type_name, value1)
+                                        type_obj.type_name, value2, stream_obj)
                         else:
-                            self.write_base_type(type_obj, value)
-        print('write file to: ' + file_path)
+                            list1 = value.split('_')
+                            self.write_base_type(
+                                Mark.BYTE, len(list1), stream_obj)
+                            for value1 in list1:
+                                self.write_base_type(
+                                    type_obj.type_name, value1, stream_obj)
+                    else:
+                        self.write_base_type(type_obj, value, stream_obj)
+
+    def extract_compress_configs(self):
+        compress_obj = zlib.compressobj(wbits=-zlib.MAX_WBITS)
+        out_path = os.path.join(self.__cfg_dest_path, "config.dat")
+        with open(out_path, "wb") as file:
+            for name, byte_obj in ParseXls.__config_collection_dict.items():
+                file.write(compress_obj.compress(byte_obj.bytes_obj))
+            file.write(compress_obj.flush())
+        print('write file to: ' + out_path)
+
+    def extract_config_dat_list(self):
+        for name, byte_obj in ParseXls.__config_collection_dict.items():
+            file_path = os.path.join(self.__cfg_dest_path, name) + ".dat"
+            with open(file_path, "wb") as file:
+                byte_obj.write_to_stream(file)
+            print('wirte file to:' + file_path)
 
     def extract_class_collection_file(self):
         content_str = self._get_class_collection_templet_str()
@@ -389,8 +409,7 @@ class ParseXls(object):
         print('write file to: ' + file_path)
 
     @staticmethod
-    def write_base_type(type_name, value):
-        writer = ParseXls.__write_tool
+    def write_base_type(type_name, value, writer):
         try:
             if type_name == Mark.STRING:
                 writer.write_utf(value)
@@ -410,6 +429,7 @@ class ParseXls(object):
         if isinstance(value, float) or isinstance(value, int):
             return value == 1
         return False
+
 
 class ClassInfo:
     def __init__(self, name):

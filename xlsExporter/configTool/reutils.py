@@ -16,8 +16,14 @@ es_import_declare_list = re.compile(pattern_es_import_declare_list)
 es_export_declare_list = re.compile(pattern_es_export_declare_list)
 
 
-# 替换只有一种标签的标记语句列 matched的组1为分隔，组2为标签语句
 def def_one_mark_list(mark, src_list, org_input=None):
+    """
+    替换只有一种标签的标记语句列
+    :param mark: 标签名
+    :param src_list: 数据源
+    :param org_input: 指定读取源数据的方式
+    :return:
+    """
     input_map = __trance_map(org_input)
 
     def out_fuc(matched):

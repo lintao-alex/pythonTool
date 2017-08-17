@@ -90,6 +90,9 @@ namespace @PkgNm{
 
 namespace @PkgNm{
     export class @ClassNm{
+        @ClDc#
+        public static @ClassNm = @ClassNm;
+        
         @PtDc#
         public static map@ClassNm:Map<number, @ClassNm> = new Map<number, @ClassNm>();
     }

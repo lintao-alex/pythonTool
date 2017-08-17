@@ -1,1 +1,1 @@
-python configTool\export_all.py test test\client test
+python configTool\export_all.py test test\client test -c

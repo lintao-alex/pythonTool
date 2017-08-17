@@ -7,6 +7,8 @@
 
 namespace staticdata{
     export class StaticData{
+        public static TestUnit = TestUnit;
+        
         public static mapTestUnit:Map<number, TestUnit> = new Map<number, TestUnit>();
     }
 

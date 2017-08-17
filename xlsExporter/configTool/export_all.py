@@ -61,9 +61,13 @@ def main():
         parse_obj.reset(xls_full_path, code_dir, cfg_dir)
         parse_obj.extract_define_class()
         parse_obj.extract_game_class()
-        parse_obj.extract_config_file()
+        parse_obj.record_config_stream()
 
     parse_obj.extract_class_collection_file()
+    if '-c' in sys.argv:
+        parse_obj.extract_compress_configs()  # 合并压缩
+    else:
+        parse_obj.extract_config_dat_list()  # 散开不压缩
 
 
 if __name__ == '__main__':
