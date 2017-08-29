@@ -120,9 +120,12 @@ class ParseXls(object):
                     in_v_map = []
                     for in_i, in_v in enumerate(value_cols):
                         self.__error_info.row_index = 5 + in_i
-                        in_v_list = in_v.split('_')
-                        self.__error_info.check_equal_count(
-                            len(in_v_list), in_len)
+                        if isinstance(in_v, float):
+                            in_v_list = list(range(in_len))
+                        else:
+                            in_v_list = in_v.split('_')
+                            self.__error_info.check_equal_count(
+                                len(in_v_list), in_len)
                         in_v_map.append(in_v_list)
                     self.__error_info.row_index = 4
                     for in_i, in_type in enumerate(in_type_list):
@@ -132,7 +135,7 @@ class ParseXls(object):
                             in_type, utils.beautify_formation(
                                 in_ppt_list[in_i]), desc_str, value_split)
                 else:
-                    self.__error_info.row_index = 4
+                    self.__error_info.row_index = 3
                     def_match = self.__define_re.match(type_name)
                     if def_match is not None:  # 自定义类
                         cl_name = utils.beautify_formation(
@@ -150,6 +153,7 @@ class ParseXls(object):
                         self.__proxy_define_list.append(def_cl)
                     else:
                         array_match = self.__array_re.match(type_name)
+                        self.__error_info.row_index = 3
                         if array_match is not None:
                             base_type = array_match.group(1)
                             array_match2 = self.__array_re.match(base_type)
@@ -160,16 +164,19 @@ class ParseXls(object):
                                 base_type = ArrayInfo(base_type, 1)
                         else:
                             base_type = type_name
+                            if type_name not in self.__type_map:
+                                self.__error_info.alert_type_err(type_name)
                         self.__append_export(
                             base_type,
                             utils.beautify_formation(property_name),
                             desc_str,
                             value_cols)
 
-    def __append_export(self, type_name, property_name, desc_str, values):
+    def __append_export(self, type_obj, property_name, desc_str, values):
+        self.__error_info.row_index = 4
         self.__error_info.check_repeat_value(
             property_name, self.__property_list, '字段名')
-        self.__type_list.append(type_name)
+        self.__type_list.append(type_obj)
         self.__property_list.append(property_name)
         self.__desc_list.append(desc_str)
         self.__values_list.append(values)

@@ -6,6 +6,7 @@
 ##目前只提供了生成TypeScript的功能，要扩展出其它目标语言，只要继承ParseXls，覆写那些必要的方法并写好语言模板
 ---
 ###TypeScript中的解压参考如下，其中的"arrayBuffer"为js中的ArrayBuffer对象
+###
 let compressFile = new Zlib.RawInflate(arrayBuffer)
 buffer = compressFile.decompress();
 let byteArr = new egret.ByteArray(buffer);

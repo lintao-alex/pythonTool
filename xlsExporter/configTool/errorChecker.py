@@ -32,6 +32,9 @@ class ErrorInfo:
     def alert_struct_err(self):
         raise Exception(self.__get_pos('数值超出设定类型最大值'))
 
+    def alert_type_err(self, type_str):
+        raise Exception(self.__get_pos('错误的数据类型: '+type_str))
+
     def check_class_name(self, value):
         self.check_value(value)
         if value in self.__class_list:
