@@ -67,4 +67,4 @@ class ByteArray:
         write_int(self.__stream_obj, data)
 
     def write_float(self, data):
-        write_utf(self.__stream_obj, data)
+        write_float(self.__stream_obj, data)
