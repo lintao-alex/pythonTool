@@ -426,6 +426,8 @@ class ParseXls(object):
                 writer.write_unsigned_short(value)
             elif type_name == Mark.INT:
                 writer.write_int(value)
+            elif type_name == Mark.FLOAT:
+                writer.write_float(value)
             else:
                 raise Exception('new base type appear: ' + type_name)
         except struct.error:
